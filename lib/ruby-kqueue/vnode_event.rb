@@ -30,7 +30,7 @@ module RubyKQueue
     
     @@ident_to_fd = {}
     
-    def self.transform_ident(ident)
+    def self.normalize_ident(ident)
       case ident
       when Fixnum
         ident

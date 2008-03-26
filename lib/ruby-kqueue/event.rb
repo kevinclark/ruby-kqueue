@@ -116,7 +116,7 @@ module RubyKQueue
       end
     end
     
-    def self.transform_ident(ident)
+    def self.normalize_ident(ident)
       ident
     end
     
