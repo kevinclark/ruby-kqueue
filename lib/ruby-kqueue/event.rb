@@ -63,6 +63,7 @@ module RubyKQueue
           nevents = kevent(kq, NULL, 0, events, num_to_fetch, NULL);
       
           if (-1 == nevents) {
+            free(events);
             rb_raise(rb_eStandardError, strerror(errno));
           } else {
             for (i = 0; i < nevents; i++) {
