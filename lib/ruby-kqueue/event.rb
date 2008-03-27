@@ -14,6 +14,16 @@ module RubyKQueue
         #define MAX_EVENTS 10
       END
       
+      builder.map_c_const({
+        'EV_ADD'      => 'int',
+        'EV_ENABLE'   => 'int',
+        'EV_DISABLE'  => 'int',
+        'EV_DELETE'   => 'int',
+        'EV_ONESHOT'  => 'int',
+        'EV_CLEAR'    => 'int',
+        'EV_EOF'      => 'int',
+      })
+      
       builder.add_to_init <<-"END"
         kq = kqueue();
         cRubyKQueue = rb_const_get(rb_cObject, rb_intern("RubyKQueue"));
@@ -27,11 +37,11 @@ module RubyKQueue
       END
       
       builder.c_singleton <<-"END"
-        VALUE c_register(VALUE ident, VALUE filter, VALUE fflags) {
+        VALUE c_register(VALUE ident, VALUE flags, VALUE filter, VALUE fflags) {
           struct kevent new_event;
           
           EV_SET(&new_event, FIX2INT(ident), FIX2INT(filter),
-                 EV_ADD | EV_ENABLE, FIX2INT(fflags), 0, 0);
+                 FIX2INT(flags), FIX2INT(fflags), 0, 0);
           
           if (-1 == kevent(kq, &new_event, 1, NULL, 0, NULL)) {
             rb_raise(rb_eStandardError, strerror(errno));
@@ -79,6 +89,8 @@ module RubyKQueue
     
     @@registry = {}
     
+    # TODO: Allow a lower level interface for direct manipulation
+    #       of registration flags (EV_ONESHOT and the like)
     def self.register(ident, filter_class, *flags, &block)
       ident = filter_class.normalize_ident(ident)
       filter = filter_class::FILTER
@@ -92,7 +104,7 @@ module RubyKQueue
       
       mask = flags.inject {|msk, flg| msk | flg }
       
-      c_register(ident, filter, mask)
+      c_register(ident, EV_ADD | EV_ENABLE, filter, mask)
     end
     
     def self.trigger(id, filter, flag)
