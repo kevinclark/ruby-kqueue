@@ -53,14 +53,13 @@ module RubyKQueue
           // Don't actually run this method until we've got an event
           rb_thread_select(kq + 1, &read_set, NULL, NULL, NULL);  
       
-          num_to_fetch = MAX_EVENTS;
-          events = (struct kevent*)malloc(num_to_fetch * sizeof(struct kevent));
+          events = (struct kevent*)malloc(MAX_EVENTS * sizeof(struct kevent));
       
           if (NULL == events) {
             rb_raise(rb_eStandardError, strerror(errno));
           }
       
-          nevents = kevent(kq, NULL, 0, events, num_to_fetch, NULL);
+          nevents = kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
       
           if (-1 == nevents) {
             free(events);
@@ -81,7 +80,7 @@ module RubyKQueue
     @@registry = {}
     
     def self.register(ident, filter_class, *flags, &block)
-      ident = filter_class.transform_ident(ident)
+      ident = filter_class.normalize_ident(ident)
       filter = filter_class::FILTER
       
       @@registry[filter] ||= {}
@@ -125,7 +124,7 @@ module RubyKQueue
     
     def initialize(id, filter_or_filter_class, flag)      
       if filter_or_filter_class.is_a? Class
-        @id = filter_or_filter_class.transform_ident(id)
+        @id = filter_or_filter_class.normalize_ident(id)
         @filter = filter_or_filter_class::FILTER
       else
         @id = id
