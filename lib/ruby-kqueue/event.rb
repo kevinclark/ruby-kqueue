@@ -116,6 +116,8 @@ module RubyKQueue
       end
     end
     
+    # Override to transform a 'nice' identifier to a cannonical kqueue friendly form
+    # eg. VNodes are referenced by paths in ruby, but need a file descriptor in C
     def self.normalize_ident(ident)
       ident
     end
@@ -124,9 +126,11 @@ module RubyKQueue
     
     def initialize(id, filter_or_filter_class, flag)      
       if filter_or_filter_class.is_a? Class
+        # Coercion to canonical id and filter (for ruby niceness)
         @id = filter_or_filter_class.normalize_ident(id)
         @filter = filter_or_filter_class::FILTER
       else
+        # Assume cannonical id and filter (as int) (for c calling)
         @id = id
         @filter = filter_or_filter_class
       end
@@ -139,7 +143,7 @@ module RubyKQueue
         self.class.registry[filter][id][flag].call(self)
       else
         $stderr.puts "Trigger got an event it didn't respond to. Bug?"
-        # ignore or raise?
+        # TODO: ignore or raise?
       end
     end
             
