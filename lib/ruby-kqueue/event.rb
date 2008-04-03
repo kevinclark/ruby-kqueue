@@ -55,22 +55,30 @@ module RubyKQueue
         VALUE c_handle_events() {
           int nevents, i, num_to_fetch;
           struct kevent *events;
+          struct timespec timeout;
           fd_set read_set;
       
           FD_ZERO(&read_set);
           FD_SET(kq, &read_set);
-      
-          // Don't actually run this method until we've got an event
-          rb_thread_select(kq + 1, &read_set, NULL, NULL, NULL);  
-      
+          
           events = (struct kevent*)malloc(MAX_EVENTS * sizeof(struct kevent));
-      
+          bzero(&timeout, sizeof(struct timespec));
+          
           if (NULL == events) {
             rb_raise(rb_eStandardError, strerror(errno));
           }
       
-          nevents = kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
+          // Don't actually run this method until we've got an event
+          if (rb_thread_select(kq + 1, &read_set, NULL, NULL, NULL) <= 0) {
+            free(events);
+            rb_raise(rb_eStandardError, strerror(errno));
+          }
       
+          // In testing kevent has been blocking, even though select continues
+          // so set a tiny timeout just in case. It _should_ execute immediately
+          timeout.tv_nsec = 10;
+          nevents = kevent(kq, NULL, 0, events, MAX_EVENTS, &timeout);
+          
           if (-1 == nevents) {
             free(events);
             rb_raise(rb_eStandardError, strerror(errno));
@@ -81,7 +89,7 @@ module RubyKQueue
           }
       
           free(events);
-      
+          
           return INT2FIX(nevents);
         }
       END
@@ -91,9 +99,13 @@ module RubyKQueue
     
     # TODO: Allow a lower level interface for direct manipulation
     #       of registration flags (EV_ONESHOT and the like)
-    def self.register(ident, filter_class, *flags, &block)
-      ident = filter_class.normalize_ident(ident)
-      filter = filter_class::FILTER
+    def self.register(ident, filter_or_filter_class, *flags, &block)
+      if filter_or_filter_class.is_a? Class
+        ident = filter_or_filter_class.normalize_ident(ident)
+        filter = filter_or_filter_class::FILTER
+      else
+        filter = filter_or_filter_class
+      end
       
       @@registry[filter] ||= {}
       @@registry[filter][ident] ||= {}
@@ -107,12 +119,34 @@ module RubyKQueue
       c_register(ident, EV_ADD | EV_ENABLE, filter, mask)
     end
     
+    def self.deregister(ident, filter_or_filter_class, *flags)
+      # puts "Calling deregister"
+      # puts "Registry like: #{@@registry.inspect}"
+      if filter_or_filter_class.is_a? Class
+        ident = filter_or_filter_class.normalize_ident(ident)
+        filter = filter_or_filter_class::FILTER
+      else
+        filter = filter_or_filter_class
+      end
+      
+      flags.each do |flag|
+        @@registry[filter][ident].delete(flag) rescue nil
+      end
+      
+      # puts "Now registry like: #{@@registry.inspect}"
+      
+      mask = flags.inject {|msk, flg| msk | flg }
+      
+      # puts "Calling c_register"
+      c_register(ident, EV_DELETE, filter, mask)
+    end
+    
     def self.trigger(id, filter, flag)
       Event.new(id, filter, flag).trigger
     end
     
     def self.handle
-      c_handle_events
+      @@handler_thread ||= Thread.new { loop { c_handle_events } }
     end
     
     def self.registry
@@ -158,6 +192,14 @@ module RubyKQueue
         # TODO: ignore or raise?
       end
     end
-            
+    
+    def register
+      self.class.register(self.id, self.filter, self.flag)
+    end
+    
+    def deregister
+      self.class.deregister(self.id, self.filter, self.flag)
+    end
+    
   end
 end

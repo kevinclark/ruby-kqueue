@@ -22,22 +22,31 @@ module RubyKQueue
         42
       end
       
-      Event.new(@dir, VNodeEvent, VNodeEvent::WRITE).trigger.should == 42
-    
-      # TODO: Deregister
+      ev = Event.new(@dir, VNodeEvent, VNodeEvent::WRITE)
+      
+      ev.trigger.should == 42
+      
+      ev.deregister
+      
+      ev.trigger.should == nil
     end
     
-    it "should be triggered by an event" do      
+    it "should be triggered by an event if registered" do
       t = Thread.new { Event.handle }
       Event.register(@dir, VNodeEvent, VNodeEvent::WRITE) do
         $ret = 42
       end
       
       File.open("#{@dir}/writing", 'w+') {|f|}
-      
-      sleep 0.001
-      
+      sleep 0.00001
       $ret.should == 42
+      
+      Event.deregister(@dir, VNodeEvent, VNodeEvent::WRITE)
+      $ret = nil
+      
+      File.open("#{@dir}/writing_again", 'w+') {|f|}
+      sleep 0.00001
+      $ret.should == nil
     end
   end
   
